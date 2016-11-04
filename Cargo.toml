@@ -11,6 +11,7 @@ tokio-curl = "0.1"
 curl = "0.3"
 rustc-serialize = "0.3"
 error-chain = "0.5"
+time = "0.1"
 
 [replace]
 'tokio-core:0.1.0' = { git = "https://github.com/tokio-rs/tokio-core" }

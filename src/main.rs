@@ -1,9 +1,10 @@
-extern crate tokio_core;
-extern crate rustc_serialize;
-extern crate getopts;
-extern crate tokio_curl;
-extern crate futures;
 extern crate curl;
+extern crate futures;
+extern crate getopts;
+extern crate rustc_serialize;
+extern crate time;
+extern crate tokio_core;
+extern crate tokio_curl;
 #[macro_use]
 extern crate error_chain;
 
@@ -103,6 +104,8 @@ fn main() {
 
 impl State {
     fn check(&self) -> MyFuture<()> {
+        println!("--------------------------------------------------------\n\
+                 {} - starting check", time::now().rfc822z());
         let travis = self.check_travis();
         let appveyor = self.check_appveyor();
         let travis = travis.then(|result| {
