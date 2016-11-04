@@ -55,6 +55,7 @@ fn main() {
     opts.reqopt("a", "appveyor", "appveyor token", "TOKEN");
     opts.reqopt("b", "branch", "branch to work with", "BRANCH");
     opts.optopt("i", "interval", "seconds to sleep", "SECS");
+    opts.optopt("", "appveyor-account", "appveyor account name", "ACCOUNT");
 
     let usage = || -> ! {
         println!("{}", opts.usage("usage: ./foo -a ... -t ..."));
@@ -84,7 +85,7 @@ fn main() {
         }).collect(),
         session: Session::new(handle.clone()),
         branch: matches.opt_str("b").unwrap(),
-        appveyor_account_name: "alexcrichton".to_string(),
+        appveyor_account_name: matches.opt_str("appveyor-account").unwrap(),
     };
 
     let seconds = matches.opt_str("interval")
