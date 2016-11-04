@@ -54,6 +54,7 @@ fn main() {
     opts.reqopt("t", "travis", "travis token", "TOKEN");
     opts.reqopt("a", "appveyor", "appveyor token", "TOKEN");
     opts.reqopt("b", "branch", "branch to work with", "BRANCH");
+    opts.optopt("i", "interval", "seconds to sleep", "SECS");
 
     let usage = || -> ! {
         println!("{}", opts.usage("usage: ./foo -a ... -t ..."));
@@ -86,10 +87,14 @@ fn main() {
         appveyor_account_name: "alexcrichton".to_string(),
     };
 
+    let seconds = matches.opt_str("interval")
+                         .map(|s| s.parse().unwrap())
+                         .unwrap_or(10);
+
     let stream = stream::iter(std::iter::repeat(()).map(Ok::<_, BorsError>));
     core.run(stream.fold((), |(), ()| {
         state.check().and_then(|()| {
-            t!(Timeout::new(Duration::new(10, 0), &handle))
+            t!(Timeout::new(Duration::new(seconds, 0), &handle))
                 .map_err(|e| e.into())
         })
     })).unwrap();
