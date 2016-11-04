@@ -105,6 +105,14 @@ impl State {
     fn check(&self) -> MyFuture<()> {
         let travis = self.check_travis();
         let appveyor = self.check_appveyor();
+        let travis = travis.then(|result| {
+            println!("travis result {:?}", result);
+            Ok(())
+        });
+        let appveyor = appveyor.then(|result| {
+            println!("appveyor result {:?}", result);
+            Ok(())
+        });
         Box::new(travis.join(appveyor).map(|_| ()))
     }
 
