@@ -8,13 +8,13 @@ extern crate curl;
 extern crate error_chain;
 
 use std::env;
-use std::io;
+use std::collections::HashMap;
 use std::time::Duration;
 
 use futures::Future;
 use futures::stream::{self, Stream};
 use getopts::Options;
-use tokio_core::reactor::{Core, Handle, Timeout};
+use tokio_core::reactor::{Core, Timeout};
 use tokio_curl::Session;
 use errors::*;
 
@@ -103,7 +103,89 @@ impl State {
     }
 
     fn check_travis(&self) -> MyFuture<()> {
-        Box::new(futures::finished(()))
+        let futures = self.repos.iter().map(|repo| {
+            self.check_travis_repo(repo.clone())
+        }).collect::<Vec<_>>();
+        Box::new(futures::collect(futures).map(|_| ()))
+    }
+
+    fn check_travis_repo(&self, repo: Repo) -> MyFuture<()> {
+        let url = format!("/repos/{}/{}/builds", repo.user, repo.name);
+        let history = http::travis_get(&self.session,
+                                       &url,
+                                       &self.travis_token);
+
+        let me = self.clone();
+        let cancel_old = history.and_then(move |list: travis::GetBuilds| {
+            let max = list.builds.iter().map(|b| &b.number[..]).max();
+            let mut futures = Vec::new();
+            let commits = list.commits.iter()
+                              .map(|c| (c.id, c))
+                              .collect::<HashMap<_, _>>();
+            for build in list.builds.iter() {
+                if !me.travis_build_running(build) {
+                    continue
+                }
+                match commits.get(&build.commit_id) {
+                    Some(c) if c.branch != me.branch => continue,
+                    Some(_) => {}
+                    None => continue,
+                }
+                if &build.number[..] == max.unwrap_or("0") {
+                    futures.push(me.travis_cancel_if_jobs_failed(build));
+                } else {
+                    println!("travis cancelling {} in {} as it's not the latest",
+                             build.number, build.state);
+                    futures.push(me.travis_cancel_build(build));
+                }
+            }
+            futures::collect(futures)
+        });
+
+        Box::new(cancel_old.map(|_| ()))
+    }
+
+    fn travis_cancel_if_jobs_failed(&self, build: &travis::Build)
+                                    -> MyFuture<()> {
+        let url = format!("/builds/{}", build.id);
+        let build = http::travis_get(&self.session, &url, &self.travis_token);
+        let me = self.clone();
+        let cancel = build.and_then(move |b: travis::GetBuild| {
+            let cancel = b.jobs.iter().any(|job| {
+                match &job.state[..] {
+                    "failed" |
+                    "errored" |
+                    "canceled" => true,
+                    _ => false,
+                }
+            });
+
+            if cancel {
+                println!("cancelling top build {} as a job failed",
+                         b.build.number);
+                me.travis_cancel_build(&b.build)
+            } else {
+                Box::new(futures::finished(()))
+            }
+        });
+
+        Box::new(cancel.map(|_| ()))
+    }
+
+    fn travis_build_running(&self, build: &travis::Build) -> bool {
+        match &build.state[..] {
+            "passed" |
+            "failed" |
+            "canceled" |
+            "errored" => false,
+            _ => true,
+        }
+    }
+
+    fn travis_cancel_build(&self, build: &travis::Build)
+                             -> MyFuture<()> {
+        let url = format!("/builds/{}/cancel", build.id);
+        http::travis_post(&self.session, &url, &self.travis_token)
     }
 
     fn check_appveyor(&self) -> MyFuture<()> {
@@ -189,5 +271,4 @@ impl State {
                           build.version);
         http::appveyor_delete(&self.session, &url, &self.appveyor_token)
     }
-
 }

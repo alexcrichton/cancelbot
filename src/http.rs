@@ -10,6 +10,7 @@ use rustc_serialize::Decodable;
 use MyFuture;
 use errors::*;
 
+#[allow(dead_code)]
 pub struct Response {
     easy: Easy,
     headers: Arc<Mutex<Vec<Vec<u8>>>>,
@@ -27,6 +28,20 @@ pub fn travis_get<T>(sess: &Session,
         format!("Accept: application/vnd.travis-ci.2+json"),
     ];
     get_json(sess, &url, &headers)
+}
+
+pub fn travis_post(sess: &Session,
+                   url: &str,
+                   token: &str) -> MyFuture<()> {
+    let headers = vec![
+        format!("Authorization: token {}", token),
+        format!("Accept: application/vnd.travis-ci.2+json"),
+    ];
+
+    let response = post(sess,
+                        &format!("https://api.travis-ci.org{}", url),
+                        &headers);
+    Box::new(response.map(|_| ()))
 }
 
 pub fn appveyor_get<T>(sess: &Session,
@@ -98,6 +113,21 @@ pub fn delete(sess: &Session, url: &str, headers: &[String]) -> MyFuture<Respons
 
     t!(handle.http_headers(list));
     t!(handle.custom_request("DELETE"));
+    t!(handle.url(url));
+
+    perform(sess, handle, url)
+}
+
+pub fn post(sess: &Session, url: &str, headers: &[String]) -> MyFuture<Response> {
+    let mut handle = Easy::new();
+    let mut list = List::new();
+    t!(list.append("User-Agent: hello!"));
+    for header in headers {
+        t!(list.append(header));
+    }
+
+    t!(handle.http_headers(list));
+    t!(handle.post(true));
     t!(handle.url(url));
 
     perform(sess, handle, url)
