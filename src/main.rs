@@ -134,19 +134,26 @@ impl State {
 
         let me = self.clone();
         let cancel_old = history.and_then(move |list: travis::GetBuilds| {
-            let max = list.builds.iter().map(|b| &b.number[..]).max();
             let mut futures = Vec::new();
             let commits = list.commits.iter()
                               .map(|c| (c.id, c))
                               .collect::<HashMap<_, _>>();
-            for build in list.builds.iter() {
+
+            // we're only interested in builds that concern our branch
+            let builds = list.builds.iter().filter(|build| {
+                match commits.get(&build.commit_id) {
+                    Some(c) if c.branch != me.branch => false,
+                    Some(_) => true,
+                    None => false,
+                }
+            }).collect::<Vec<_>>();
+
+            // figure out what the max build number is, then cancel everything
+            // that came before that.
+            let max = builds.iter().map(|b| &b.number[..]).max();
+            for build in builds.iter() {
                 if !me.travis_build_running(build) {
                     continue
-                }
-                match commits.get(&build.commit_id) {
-                    Some(c) if c.branch != me.branch => continue,
-                    Some(_) => {}
-                    None => continue,
                 }
                 if &build.number[..] == max.unwrap_or("0") {
                     futures.push(me.travis_cancel_if_jobs_failed(build));
