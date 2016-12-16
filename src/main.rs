@@ -118,7 +118,7 @@ impl State {
         });
 
         let requests = travis.join(appveyor).map(|_| ());
-        let timeout = t!(Timeout::new(Duration::new(5, 0), handle));
+        let timeout = t!(Timeout::new(Duration::new(30, 0), handle));
         Box::new(requests.map(Ok)
                          .select(timeout.map(Err).map_err(From::from))
                          .then(|res| {
