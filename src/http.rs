@@ -149,7 +149,9 @@ pub fn perform(sess: &Session, mut easy: Easy, url: &str) -> MyFuture<Response> 
     }));
 
     let response = sess.perform(easy);
-    let checked_response = response.map_err(|e| e.into()).and_then(|mut easy| {
+    let url = url.to_string();
+    let checked_response = response.map_err(|e| e.into()).and_then(move |mut easy| {
+        println!("finished: {}", url);
         match t!(easy.response_code()) {
             200 | 204 => {
                 Ok(Response {

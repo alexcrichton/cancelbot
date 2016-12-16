@@ -15,7 +15,7 @@ use std::time::Duration;
 use futures::Future;
 use futures::stream::{self, Stream};
 use getopts::Options;
-use tokio_core::reactor::{Core, Timeout};
+use tokio_core::reactor::{Core, Handle, Timeout};
 use tokio_curl::Session;
 use errors::*;
 
@@ -95,7 +95,7 @@ fn main() {
 
     let stream = stream::iter(std::iter::repeat(()).map(Ok::<_, BorsError>));
     core.run(stream.fold((), |(), ()| {
-        state.check().and_then(|()| {
+        state.check(&handle).and_then(|()| {
             t!(Timeout::new(Duration::new(seconds, 0), &handle))
                 .map_err(|e| e.into())
         })
@@ -103,7 +103,7 @@ fn main() {
 }
 
 impl State {
-    fn check(&self) -> MyFuture<()> {
+    fn check(&self, handle: &Handle) -> MyFuture<()> {
         println!("--------------------------------------------------------\n\
                  {} - starting check", time::now().rfc822z());
         let travis = self.check_travis();
@@ -116,7 +116,21 @@ impl State {
             println!("appveyor result {:?}", result);
             Ok(())
         });
-        Box::new(travis.join(appveyor).map(|_| ()))
+
+        let requests = travis.join(appveyor).map(|_| ());
+        let timeout = t!(Timeout::new(Duration::new(5, 0), handle));
+        Box::new(requests.map(Ok)
+                         .select(timeout.map(Err).map_err(From::from))
+                         .then(|res| {
+            match res {
+                Ok((Ok(()), _timeout)) => Ok(()),
+                Ok((Err(_), _requests)) => {
+                    println!("timeout, canceling requests");
+                    Ok(())
+                }
+                Err((e, _other)) => Err(e),
+            }
+        }))
     }
 
     fn check_travis(&self) -> MyFuture<()> {
