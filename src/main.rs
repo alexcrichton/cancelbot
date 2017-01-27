@@ -13,7 +13,6 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use futures::Future;
-use futures::stream::{self, Stream};
 use getopts::Options;
 use tokio_core::reactor::{Core, Handle, Timeout};
 use tokio_curl::Session;
@@ -55,7 +54,6 @@ fn main() {
     opts.reqopt("t", "travis", "travis token", "TOKEN");
     opts.reqopt("a", "appveyor", "appveyor token", "TOKEN");
     opts.reqopt("b", "branch", "branch to work with", "BRANCH");
-    opts.optopt("i", "interval", "seconds to sleep", "SECS");
     opts.optopt("", "appveyor-account", "appveyor account name", "ACCOUNT");
 
     let usage = || -> ! {
@@ -89,17 +87,7 @@ fn main() {
         appveyor_account_name: matches.opt_str("appveyor-account").unwrap(),
     };
 
-    let seconds = matches.opt_str("interval")
-                         .map(|s| s.parse().unwrap())
-                         .unwrap_or(10);
-
-    let stream = stream::iter(std::iter::repeat(()).map(Ok::<_, BorsError>));
-    core.run(stream.fold((), |(), ()| {
-        state.check(&handle).and_then(|()| {
-            t!(Timeout::new(Duration::new(seconds, 0), &handle))
-                .map_err(|e| e.into())
-        })
-    })).unwrap();
+    core.run(state.check(&handle)).unwrap();
 }
 
 impl State {
