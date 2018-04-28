@@ -152,12 +152,12 @@ impl State {
 
             // figure out what the max build number is, then cancel everything
             // that came before that.
-            let max = builds.iter().map(|b| &b.number[..]).max();
+            let max = builds.iter().map(|b| b.number.parse::<usize>().unwrap()).max();
             for build in builds.iter() {
                 if !me.travis_build_running(build) {
                     continue
                 }
-                if &build.number[..] == max.unwrap_or("0") {
+                if build.number == max.unwrap_or(0).to_string() {
                     futures.push(me.travis_cancel_if_jobs_failed(build));
                 } else {
                     println!("travis cancelling {} in {} as it's not the latest",
