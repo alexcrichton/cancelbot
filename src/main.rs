@@ -265,6 +265,7 @@ impl State {
                 match &job.status[..] {
                     "success" |
                     "queued" |
+                    "starting" |
                     "running" => continue,
                     _ => {}
                 }
