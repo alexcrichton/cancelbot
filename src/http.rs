@@ -10,6 +10,9 @@ use rustc_serialize::Decodable;
 use MyFuture;
 use errors::*;
 
+static TRAVIS_API_BASE: &str = "https://api.travis-ci.com";
+static APPVEYOR_API_BASE: &str = "https://ci.appveyor.com/api";
+
 #[allow(dead_code)]
 pub struct Response {
     easy: Easy,
@@ -22,7 +25,7 @@ pub fn travis_get<T>(sess: &Session,
                      token: &str) -> MyFuture<T>
     where T: Decodable + 'static
 {
-    let url = format!("https://api.travis-ci.org{}", url);
+    let url = format!("{}{}", TRAVIS_API_BASE, url);
     let headers = vec![
         format!("Authorization: token {}", token),
         format!("Accept: application/vnd.travis-ci.2+json"),
@@ -39,7 +42,7 @@ pub fn travis_post(sess: &Session,
     ];
 
     let response = post(sess,
-                        &format!("https://api.travis-ci.org{}", url),
+                        &format!("{}{}", TRAVIS_API_BASE, url),
                         &headers);
     Box::new(response.map(|_| ()))
 }
@@ -54,7 +57,7 @@ pub fn appveyor_get<T>(sess: &Session,
         format!("Accept: application/json"),
     ];
 
-    get_json(sess, &format!("https://ci.appveyor.com/api{}", url), &headers)
+    get_json(sess, &format!("{}{}", APPVEYOR_API_BASE, url), &headers)
 }
 
 pub fn appveyor_delete(sess: &Session,
@@ -66,7 +69,7 @@ pub fn appveyor_delete(sess: &Session,
     ];
 
     let response = delete(sess,
-                          &format!("https://ci.appveyor.com/api{}", url),
+                          &format!("{}{}", APPVEYOR_API_BASE, url),
                           &headers);
     Box::new(response.map(|_| ()))
 }
