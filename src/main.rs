@@ -37,6 +37,7 @@ struct State {
     repos: Vec<Repo>,
     branch: String,
     appveyor_account_name: String,
+    azure_pipelines_token: String,
 }
 
 #[derive(Clone)]
@@ -46,6 +47,7 @@ struct Repo {
 }
 
 mod appveyor;
+mod azure;
 mod errors;
 mod http;
 mod travis;
@@ -57,6 +59,7 @@ fn main() {
     opts.reqopt("a", "appveyor", "appveyor token", "TOKEN");
     opts.reqopt("b", "branch", "branch to work with", "BRANCH");
     opts.optopt("", "appveyor-account", "appveyor account name", "ACCOUNT");
+    opts.optopt("", "azure-pipelines-token", "", "TOKEN");
 
     let usage = || -> ! {
         println!("{}", opts.usage("usage: ./foo -a ... -t ..."));
@@ -91,6 +94,7 @@ fn main() {
         session: Session::new(handle.clone()),
         branch: matches.opt_str("b").unwrap(),
         appveyor_account_name: matches.opt_str("appveyor-account").unwrap(),
+        azure_pipelines_token: matches.opt_str("azure-pipelines-token").unwrap(),
     };
 
     core.run(state.check(&handle)).unwrap();
@@ -104,17 +108,26 @@ impl State {
             time::now().rfc822z()
         );
         let travis = self.check_travis();
-        let appveyor = self.check_appveyor();
         let travis = travis.then(|result| {
             println!("travis result {:?}", result);
             Ok(())
         });
+        let appveyor = self.check_appveyor();
         let appveyor = appveyor.then(|result| {
             println!("appveyor result {:?}", result);
             Ok(())
         });
+        let azure_pipelines = self.check_azure_pipelines();
+        let azure_pipelines = azure_pipelines.then(|result| {
+            println!("azure_pipelines result {:?}", result);
+            Ok(())
+        });
 
-        let requests = travis.join(appveyor).map(|_| ());
+        let requests = travis
+            .join(appveyor)
+            .map(|_| ())
+            .join(azure_pipelines)
+            .map(|_| ());
         let timeout = t!(Timeout::new(Duration::new(30, 0), handle));
         Box::new(
             requests
@@ -301,5 +314,61 @@ impl State {
             self.appveyor_account_name, repo.name, build.version
         );
         http::appveyor_delete(&self.session, &url, &self.appveyor_token)
+    }
+
+    fn check_azure_pipelines(&self) -> MyFuture<()> {
+        let futures = self
+            .repos
+            .iter()
+            .map(|repo| self.check_azure_pipelines_repo(repo.clone()))
+            .collect::<Vec<_>>();
+        Box::new(futures::collect(futures).map(|_| ()))
+    }
+
+    fn check_azure_pipelines_repo(&self, repo: Repo) -> MyFuture<()> {
+        let url = format!(
+            "/{}/{}/_apis/build/builds?api-version=5.0&branch=refs/heads/{}",
+            repo.user, repo.name, self.branch,
+        );
+        let history = http::azure_pipelines_get(&self.session, &url, &self.azure_pipelines_token);
+
+        let me = self.clone();
+        let repo2 = repo.clone();
+        let cancel_old = history.and_then(move |list: azure::List| {
+            let max = list.value.iter().map(|b| b.id).max();
+            let mut futures = Vec::new();
+            for build in list.value.iter() {
+                if !me.azure_build_running(build) {
+                    continue;
+                }
+                if build.id < max.unwrap_or(0) {
+                    println!(
+                        "azure cancelling {} as it's not the latest",
+                        build.id,
+                    );
+                    futures.push(me.azure_cancel_build(&repo2, build));
+                }
+            }
+            futures::collect(futures)
+        });
+
+        Box::new(cancel_old.map(|_| ()))
+    }
+
+    fn azure_build_running(&self, build: &azure::Build) -> bool {
+        match &build.status[..] {
+            "cancelling" | "completed" => false,
+            _ => true,
+        }
+    }
+
+    fn azure_cancel_build(&self, repo: &Repo, build: &azure::Build) -> MyFuture<()> {
+        let url = format!(
+            "/{}/{}/_apis/build/builds/{}?api-version=5.0",
+            repo.user, repo.name, build.id,
+        );
+        let body = "{\"status\":\"Cancelling\"}";
+        http::azure_patch(&self.session, &url, &self.azure_pipelines_token, body)
+
     }
 }
