@@ -1,9 +1,11 @@
-use std::str;
-use std::io;
+#![allow(deprecated)]
 
-use tokio_curl;
+use std::io;
+use std::str;
+
 use curl;
 use rustc_serialize::json;
+use tokio_curl;
 
 error_chain! {
     types {

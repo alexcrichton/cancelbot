@@ -1,14 +1,14 @@
-use std::sync::{Arc, Mutex};
 use std::str;
+use std::sync::{Arc, Mutex};
 
-use futures::Future;
-use tokio_curl::Session;
 use curl::easy::{Easy, List};
+use futures::Future;
 use rustc_serialize::json;
 use rustc_serialize::Decodable;
+use tokio_curl::Session;
 
-use MyFuture;
 use errors::*;
+use MyFuture;
 
 static TRAVIS_API_BASE: &str = "https://api.travis-ci.com";
 static APPVEYOR_API_BASE: &str = "https://ci.appveyor.com/api";
@@ -20,10 +20,9 @@ pub struct Response {
     body: Arc<Mutex<Vec<u8>>>,
 }
 
-pub fn travis_get<T>(sess: &Session,
-                     url: &str,
-                     token: &str) -> MyFuture<T>
-    where T: Decodable + 'static
+pub fn travis_get<T>(sess: &Session, url: &str, token: &str) -> MyFuture<T>
+where
+    T: Decodable + 'static,
 {
     let url = format!("{}{}", TRAVIS_API_BASE, url);
     let headers = vec![
@@ -33,24 +32,19 @@ pub fn travis_get<T>(sess: &Session,
     get_json(sess, &url, &headers)
 }
 
-pub fn travis_post(sess: &Session,
-                   url: &str,
-                   token: &str) -> MyFuture<()> {
+pub fn travis_post(sess: &Session, url: &str, token: &str) -> MyFuture<()> {
     let headers = vec![
         format!("Authorization: token {}", token),
         format!("Accept: application/vnd.travis-ci.2+json"),
     ];
 
-    let response = post(sess,
-                        &format!("{}{}", TRAVIS_API_BASE, url),
-                        &headers);
+    let response = post(sess, &format!("{}{}", TRAVIS_API_BASE, url), &headers);
     Box::new(response.map(|_| ()))
 }
 
-pub fn appveyor_get<T>(sess: &Session,
-                       url: &str,
-                       token: &str) -> MyFuture<T>
-    where T: Decodable + 'static
+pub fn appveyor_get<T>(sess: &Session, url: &str, token: &str) -> MyFuture<T>
+where
+    T: Decodable + 'static,
 {
     let headers = vec![
         format!("Authorization: Bearer {}", token),
@@ -60,32 +54,25 @@ pub fn appveyor_get<T>(sess: &Session,
     get_json(sess, &format!("{}{}", APPVEYOR_API_BASE, url), &headers)
 }
 
-pub fn appveyor_delete(sess: &Session,
-                       url: &str,
-                       token: &str) -> MyFuture<()> {
+pub fn appveyor_delete(sess: &Session, url: &str, token: &str) -> MyFuture<()> {
     let headers = vec![
         format!("Authorization: Bearer {}", token),
         format!("Accept: application/json"),
     ];
 
-    let response = delete(sess,
-                          &format!("{}{}", APPVEYOR_API_BASE, url),
-                          &headers);
+    let response = delete(sess, &format!("{}{}", APPVEYOR_API_BASE, url), &headers);
     Box::new(response.map(|_| ()))
 }
 
-pub fn get_json<T>(sess: &Session,
-                   url: &str,
-                   headers: &[String]) -> MyFuture<T>
-    where T: Decodable + 'static
+pub fn get_json<T>(sess: &Session, url: &str, headers: &[String]) -> MyFuture<T>
+where
+    T: Decodable + 'static,
 {
     let response = get(sess, url, headers);
     let ret = response.and_then(|response| {
         let body = response.body.lock().unwrap();
         let json = try!(str::from_utf8(&body));
-        let ret = try!(json::decode(json).chain_err(|| {
-            format!("failed to decode: {}", json)
-        }));
+        let ret = try!(json::decode(json).chain_err(|| { format!("failed to decode: {}", json) }));
         Ok(ret)
     });
     Box::new(ret)
@@ -156,18 +143,17 @@ pub fn perform(sess: &Session, mut easy: Easy, url: &str) -> MyFuture<Response> 
     let checked_response = response.map_err(|e| e.into()).and_then(move |mut easy| {
         println!("finished: {}", url);
         match t!(easy.response_code()) {
-            200 | 204 => {
-                Ok(Response {
-                    easy: easy,
-                    headers: headers,
-                    body: data,
-                })
-            }
-            code => {
-                Err(format!("not a 200 code: {}\n\n{}\n",
-                            code,
-                            String::from_utf8_lossy(&data.lock().unwrap())).into())
-            }
+            200 | 204 => Ok(Response {
+                easy: easy,
+                headers: headers,
+                body: data,
+            }),
+            code => Err(format!(
+                "not a 200 code: {}\n\n{}\n",
+                code,
+                String::from_utf8_lossy(&data.lock().unwrap())
+            )
+            .into()),
         }
     });
 
