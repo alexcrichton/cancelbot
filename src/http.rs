@@ -12,6 +12,8 @@ use MyFuture;
 
 static TRAVIS_API_BASE: &str = "https://api.travis-ci.com";
 static APPVEYOR_API_BASE: &str = "https://ci.appveyor.com/api";
+static AZURE_API_BASE: &str = "https://dev.azure.com";
+static AGENT: &str = "User-Agent: cancelbot (github.com/alexcrichton/cancelbot)";
 
 #[allow(dead_code)]
 pub struct Response {
@@ -64,6 +66,31 @@ pub fn appveyor_delete(sess: &Session, url: &str, token: &str) -> MyFuture<()> {
     Box::new(response.map(|_| ()))
 }
 
+pub fn azure_pipelines_get<T>(sess: &Session, url: &str, token: &str) -> MyFuture<T>
+where
+    T: Decodable + 'static,
+{
+    let base64 = base64::encode(&format!(":{}", token));
+    let headers = vec![
+        format!("Authorization: Basic {}", base64),
+        format!("Accept: application/json"),
+    ];
+
+    get_json(sess, &format!("{}{}", AZURE_API_BASE, url), &headers)
+}
+
+pub fn azure_patch(sess: &Session, url: &str, token: &str, body: &str) -> MyFuture<()> {
+    let base64 = base64::encode(&format!(":{}", token));
+    let headers = vec![
+        format!("Authorization: Basic {}", base64),
+        format!("Accept: application/json"),
+        format!("Content-Type: application/json"),
+    ];
+
+    let response = patch(sess, &format!("{}{}", AZURE_API_BASE, url), &headers, body);
+    Box::new(response.map(|_| ()))
+}
+
 pub fn get_json<T>(sess: &Session, url: &str, headers: &[String]) -> MyFuture<T>
 where
     T: Decodable + 'static,
@@ -81,7 +108,7 @@ where
 pub fn get(sess: &Session, url: &str, headers: &[String]) -> MyFuture<Response> {
     let mut handle = Easy::new();
     let mut list = List::new();
-    t!(list.append("User-Agent: hello!"));
+    t!(list.append(AGENT));
     for header in headers {
         t!(list.append(header));
     }
@@ -96,7 +123,7 @@ pub fn get(sess: &Session, url: &str, headers: &[String]) -> MyFuture<Response> 
 pub fn delete(sess: &Session, url: &str, headers: &[String]) -> MyFuture<Response> {
     let mut handle = Easy::new();
     let mut list = List::new();
-    t!(list.append("User-Agent: hello!"));
+    t!(list.append(AGENT));
     for header in headers {
         t!(list.append(header));
     }
@@ -111,13 +138,29 @@ pub fn delete(sess: &Session, url: &str, headers: &[String]) -> MyFuture<Respons
 pub fn post(sess: &Session, url: &str, headers: &[String]) -> MyFuture<Response> {
     let mut handle = Easy::new();
     let mut list = List::new();
-    t!(list.append("User-Agent: hello!"));
+    t!(list.append(AGENT));
     for header in headers {
         t!(list.append(header));
     }
 
     t!(handle.http_headers(list));
     t!(handle.post(true));
+    t!(handle.url(url));
+
+    perform(sess, handle, url)
+}
+
+pub fn patch(sess: &Session, url: &str, headers: &[String], body: &str) -> MyFuture<Response> {
+    let mut handle = Easy::new();
+    let mut list = List::new();
+    t!(list.append(AGENT));
+    for header in headers {
+        t!(list.append(header));
+    }
+
+    t!(handle.http_headers(list));
+    t!(handle.post_fields_copy(body.as_bytes()));
+    t!(handle.custom_request("PATCH"));
     t!(handle.url(url));
 
     perform(sess, handle, url)
